@@ -1,0 +1,15 @@
+{
+  "name": "Caisse Kanji Multi Services",
+  "short_name": "Caisse KMS",
+  "description": "Application de gestion de caisse — Kanji Multi Services",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBFAF7",
+  "theme_color": "#14224A",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
