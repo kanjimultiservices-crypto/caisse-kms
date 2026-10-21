@@ -1034,8 +1034,28 @@ function imprimerRecu(vid){
       <tr><td>Cumul des versements</td><td>${fcfa(verse(c.id))}</td></tr>
       <tr><td><strong>Reste à payer</strong></td><td class="gros">${fcfa(Math.max(0,reste(c)))}</td></tr>
     </table>
+    ${blocEchRecu(c)}
     <div class="sig"><div>Le client</div><div>Pour ${ENTREPRISE.nom}</div></div>
     ${pied()}`);
+}
+/* échéance à rappeler au client sur ses reçus */
+function infoEch(c){
+  if(!(c.ech&&c.ech.length)) return null;
+  const l=echeances_(c); if(!l.some(e=>e.du>0)) return {fini:true};
+  const p=l.find(e=>e.du>0&&e.d>=auj()), ret=l.filter(e=>e.st==='retard');
+  return {d:p?p.d:null, du:p?p.du:0, n:p?p.n:0, total:l.length, retard:ret.reduce((s,e)=>s+e.du,0), depuis:ret.length?ret[0].d:null};
+}
+function blocEchRecu(c){
+  const e=infoEch(c); if(!e) return '';
+  if(e.fini) return `<div style="margin-top:18px;padding:12px 16px;border:2px solid #0E7A4A;border-radius:8px;text-align:center;font-weight:700;color:#0E7A4A">Toutes les échéances sont réglées. Merci !</div>`;
+  return `<div style="margin-top:18px;padding:14px 18px;border:2px solid #F26522;border-radius:8px;background:#FFF6F2">
+    ${e.d?`<div style="font-size:11px;letter-spacing:2px;color:#F26522;font-weight:700">PROCHAINE ÉCHÉANCE (n° ${e.n} / ${e.total})</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">
+      <span style="font-size:20px;font-weight:700;color:#14224A">${jour(e.d)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;color:#14224A">${fcfa(e.du)}</span></div>`:''}
+    ${e.retard>0?`<div style="margin-top:8px;color:#C1272D;font-weight:700;font-size:13.5px">Attention : ${fcfa(e.retard)} en retard depuis le ${jour(e.depuis)}, à régulariser.</div>`:''}
+    <div style="margin-top:6px;font-size:12px;color:#555">Merci de prendre vos dispositions avant cette date.</div>
+  </div>`;
 }
 function imprimerSituation(id){
   const c=D.clients.find(x=>x.id===id);
@@ -1131,7 +1151,8 @@ function rond(x,y,w,h,r){ const c=CTX; c.beginPath();
 let CTX=null;
 
 function dessinerRecu(v,c){
-  const W=1000,H=1380, cv=document.createElement('canvas');
+  const EI=infoEch(c);
+  const W=1000,H=1380+(EI?(EI.fini?90:(EI.retard>0?200:160)):0), cv=document.createElement('canvas');
   cv.width=W; cv.height=H; const x=cv.getContext('2d'); CTX=x;
   const MARINE='#14224A', ORANGE='#F26522', BLEU='#1D3FBF', GRIS='#8A8377';
 
@@ -1204,6 +1225,28 @@ function dessinerRecu(v,c){
     x.fillStyle=g; rond(gauche,y,Math.max(18,(droite-gauche)*pct),16,8); x.fill(); }
   x.fillStyle=GRIS; x.font='600 19px Arial'; x.textAlign='center';
   x.fillText(Math.round(pct*100)+' % du prix réglé',W/2,y+48); x.textAlign='left';
+
+  // prochaine échéance
+  if(EI){
+    y+=88;
+    if(EI.fini){
+      x.strokeStyle='#0E7A4A'; x.lineWidth=3; rond(gauche,y,droite-gauche,64,10); x.stroke();
+      x.fillStyle='#0E7A4A'; x.font='700 24px Arial'; x.textAlign='center';
+      x.fillText('Toutes les échéances sont réglées. Merci !',W/2,y+41); x.textAlign='left';
+    } else {
+      const hb=EI.retard>0?172:132;
+      x.fillStyle='#FFF6F2'; rond(gauche,y,droite-gauche,hb,10); x.fill();
+      x.strokeStyle=ORANGE; x.lineWidth=3; rond(gauche,y,droite-gauche,hb,10); x.stroke();
+      if(EI.d){
+        x.fillStyle=ORANGE; x.font='700 20px Arial'; x.fillText('PROCHAINE ÉCHÉANCE  (n° '+EI.n+' / '+EI.total+')',gauche+26,y+38);
+        x.fillStyle=MARINE; x.font='700 36px Arial'; x.fillText(jour(EI.d),gauche+26,y+88);
+        x.textAlign='right'; x.font='700 38px Arial'; x.fillText(fcfa(EI.du),droite-26,y+88); x.textAlign='left';
+        x.fillStyle=GRIS; x.font='500 18px Arial'; x.fillText('Merci de prendre vos dispositions avant cette date.',gauche+26,y+118);
+      } else { x.fillStyle='#C1272D'; x.font='700 22px Arial'; x.fillText('ÉCHÉANCES EN RETARD',gauche+26,y+50); }
+      if(EI.retard>0){ x.fillStyle='#C1272D'; x.font='700 21px Arial';
+        x.fillText('Attention : '+fcfa(EI.retard)+' en retard depuis le '+jour(EI.depuis)+'.',gauche+26,y+(EI.d?156:100)); }
+    }
+  }
 
   // pied
   x.fillStyle=MARINE; x.fillRect(0,H-92,W,92);
