@@ -195,6 +195,15 @@ tr:hover td{background:#FDFBF8}
   .champ-gros{font-size:17px}
   .btn{padding:10px 14px}
 }
+/* ---------- échéancier ---------- */
+.ech-b{display:inline-block;padding:3px 9px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.8px;color:#fff;white-space:nowrap}
+.ech-payee{background:var(--vert)}.ech-retard{background:var(--rouge)}.ech-partielle{background:var(--orange)}.ech-avenir{background:#8A8377}.ech-proche{background:var(--bleu)}
+.ech-resume{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.ech-resume>div{flex:1;min-width:170px;border:1px solid var(--ligne);border-radius:6px;padding:10px 14px}
+.ech-resume .lb{font-size:10.5px;letter-spacing:1.3px;color:#8A8377;font-weight:600}
+.ech-resume .vl{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:var(--marine);margin-top:3px}
+.ech-resume .rouge .vl{color:var(--rouge)}
+#mEchLignes input{padding:7px 9px}
 #incompatible{display:none;position:fixed;inset:0;z-index:999;background:#14224A;color:#fff;font-family:Arial,sans-serif;padding:30px 22px;text-align:center}
 #incompatible .bx{max-width:460px;margin:40px auto;background:#fff;color:#14224A;border-radius:10px;padding:26px 22px;line-height:1.6}
 #incompatible h2{margin:0 0 10px;font-size:21px}
@@ -232,6 +241,7 @@ if(!ok){document.getElementById("incompatible").style.display="block";window.__K
   <nav>
     <button data-v="v-recherche" class="on">Consulter</button>
     <button data-v="v-versement">Encaisser</button>
+    <button data-v="v-echeances">Échéances</button>
     <button data-v="v-relances">Relances</button>
     <button data-v="v-client">Nouveau client</button>
     <button data-v="v-bord">Tableau de bord</button>
@@ -306,6 +316,7 @@ if(!ok){document.getElementById("incompatible").style.display="block";window.__K
           <select id="rModele">
             <option value="solde">Rappel du solde restant</option>
             <option value="echeance">Rappel d'échéance</option>
+            <option value="retard">Échéance en retard</option>
             <option value="passage">Invitation à passer au bureau</option>
             <option value="merci">Remerciement après versement</option>
             <option value="libre">Message libre</option>
@@ -315,6 +326,8 @@ if(!ok){document.getElementById("incompatible").style.display="block";window.__K
           <label>FILTRER</label>
           <select id="rFiltre">
             <option value="dette">Clients avec un reste à payer</option>
+            <option value="retard">Clients avec une échéance en retard</option>
+            <option value="semaine">Échéance dans les 7 jours</option>
             <option value="rien">Clients n'ayant jamais versé</option>
             <option value="tous">Tous les clients</option>
           </select>
@@ -323,11 +336,30 @@ if(!ok){document.getElementById("incompatible").style.display="block";window.__K
       <div class="f" style="margin-top:15px">
         <label>APERÇU DU MESSAGE — modifiable</label>
         <textarea id="rTexte" rows="4" style="width:100%;padding:11px 13px;border:1px solid var(--ligne);border-radius:5px;line-height:1.6"></textarea>
-        <div class="aide">Les mentions [NOM], [SOLDE], [BIEN], [DOSSIER] et [VERSE] sont remplacées automatiquement pour chaque client.</div>
+        <div class="aide">Les mentions [NOM], [SOLDE], [BIEN], [DOSSIER], [VERSE], [ECHEANCE] (date) et [MONTANT_ECH] (montant de l'échéance) sont remplacées automatiquement pour chaque client.</div>
       </div>
     </div>
     <div class="carte">
       <div style="overflow-x:auto"><table id="tblRelances"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ ÉCHÉANCES ============ -->
+  <section id="v-echeances" class="vue">
+    <div class="stats" id="echStats"></div>
+    <div class="carte">
+      <h2>Échéances des clients</h2>
+      <div class="st">Les versements enregistrés règlent les échéances dans l'ordre, de la plus ancienne à la plus récente.</div>
+      <div class="grille f" style="margin-bottom:16px">
+        <div><label>AFFICHER</label>
+          <select id="eFiltre">
+            <option value="urgent">En retard et à payer dans les 7 jours</option>
+            <option value="retard">En retard seulement</option>
+            <option value="mois">À payer dans les 30 jours</option>
+            <option value="toutes">Toutes les échéances non réglées</option>
+          </select></div>
+      </div>
+      <div style="overflow-x:auto"><table id="tblEch"></table></div>
     </div>
   </section>
 
@@ -348,6 +380,7 @@ if(!ok){document.getElementById("incompatible").style.display="block";window.__K
         <div><label>PRIX DE VENTE (FCFA)</label><input type="number" id="cPrix" class="mono" placeholder="3500000"></div>
         <div><label>DATE DU CONTRAT</label><input type="date" id="cDate"></div>
       </div>
+      <label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-size:14px;color:var(--marine);cursor:pointer"><input type="checkbox" id="cEch" checked style="width:18px;height:18px"> Définir l'échéancier de paiement juste après</label>
       <div style="margin-top:18px"><button class="btn b-bl" id="btnClient">Créer le dossier</button></div>
     </div>
   </section>
@@ -654,6 +687,136 @@ function statut(c){ const r=reste(c), v=verse(c.id);
   if(r<=0) return['SOLDÉ','e-solde'];
   return['EN COURS','e-cours']; }
 
+/* ---------- échéancier ---------- */
+/* c.ech = [{d:'AAAA-MM-JJ', m:montant}] ; les versements règlent les échéances dans l'ordre */
+function plusJours(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
+function plusMois(d,k){ const [a,m,j]=d.split('-').map(Number); const fin=new Date(a,m-1+k+1,0).getDate();
+  const x=new Date(a,m-1+k,Math.min(j,fin)); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
+function echeances_(c){
+  const l=(c.ech||[]).slice().sort((a,b)=>(a.d||'').localeCompare(b.d||''));
+  let pot=verse(c.id); const a=auj(), semaine=plusJours(a,7);
+  return l.map((e,i)=>{ const m=Number(e.m)||0, paye=Math.max(0,Math.min(m,pot)); pot-=paye;
+    const du=m-paye; let st='avenir';
+    if(du<=0) st='payee'; else if(e.d<a) st='retard'; else if(paye>0) st='partielle'; else if(e.d<=semaine) st='proche';
+    return {n:i+1,d:e.d,m,paye,du,st}; });
+}
+const ECH_TXT={payee:'RÉGLÉE',retard:'EN RETARD',partielle:'PARTIELLE',avenir:'À VENIR',proche:'CETTE SEMAINE'};
+function enRetard(c){ return echeances_(c).filter(e=>e.st==='retard').reduce((s,e)=>s+e.du,0); }
+function prochaine(c){ return echeances_(c).find(e=>e.du>0)||null; }
+
+function ouvrirEcheancier(id){
+  const c=D.clients.find(x=>x.id===id); if(!c) return;
+  const r=Math.max(0,reste(c));
+  document.getElementById('mTitre').textContent=`Échéancier — dossier n° ${num(c.id)} · ${c.nom}`;
+  document.getElementById('mCorps').innerHTML=`
+    <div class="msg" id="msgM"></div>
+    <div style="font-size:13.5px;color:#8A8377;margin-bottom:14px">Prix : <b style="color:var(--marine)">${fcfa(c.prix)}</b> · Déjà versé : <b style="color:var(--vert)">${fcfa(verse(c.id))}</b></div>
+    <div class="grille">
+      <div><label>MONTANT À ÉCHELONNER (FCFA)</label><input type="number" id="gTotal" class="mono" value="${c.ech&&c.ech.length?c.ech.reduce((s,e)=>s+Number(e.m||0),0):c.prix||0}"></div>
+      <div><label>NOMBRE D'ÉCHÉANCES</label><input type="number" id="gNb" class="mono" min="1" max="120" value="${(c.ech&&c.ech.length)||6}"></div>
+      <div><label>PÉRIODICITÉ</label><select id="gPer"><option value="1">Mensuelle</option><option value="2">Tous les 2 mois</option><option value="3">Trimestrielle</option><option value="0.5">Toutes les 2 semaines</option><option value="0.25">Hebdomadaire</option></select></div>
+      <div><label>DATE DE LA 1re ÉCHÉANCE</label><input type="date" id="gDate" value="${(c.ech&&c.ech[0]&&c.ech[0].d)||plusMois(c.dateContrat||auj(),1)}"></div>
+    </div>
+    <div style="margin:14px 0 6px"><button class="btn b-bl" onclick="genererEch(${c.id})">Calculer les échéances</button>
+      <span style="font-size:12.5px;color:#8A8377;margin-left:8px">Vous pouvez ensuite ajuster chaque date ou montant.</span></div>
+    <div id="mEchLignes" style="margin-top:12px"></div>
+    <div id="mEchTotal" style="margin-top:10px;font-size:13.5px"></div>`;
+  document.getElementById('mPied').innerHTML=`
+    <button class="btn b-or" onclick="enregistrerEch(${c.id})">Enregistrer l'échéancier</button>
+    <button class="btn b-vd" onclick="ajouterLigneEch(${c.id})">+ Ajouter une ligne</button>
+    ${c.ech&&c.ech.length?`<button class="btn b-rg" onclick="supprimerEch(${c.id})">Supprimer l'échéancier</button>`:''}
+    <button class="btn b-vd" onclick="fermerModal()">Fermer</button>`;
+  document.getElementById('modal').classList.add('on');
+  if(c.ech&&c.ech.length) dessinerLignesEch(c, c.ech.slice().sort((a,b)=>(a.d||'').localeCompare(b.d||''))); else genererEch(c.id);
+  if(!c.ech||!c.ech.length){ const rr=document.getElementById('gTotal'); if(rr&&verse(c.id)>0) rr.title='Astuce : les versements déjà faits règleront automatiquement les premières échéances.'; }
+}
+function dessinerLignesEch(c,l){
+  document.getElementById('mEchLignes').innerHTML=`<table><tr><th>N°</th><th>DATE</th><th class="r">MONTANT (FCFA)</th><th></th></tr>`+
+    l.map((e,i)=>`<tr><td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--orange)">${i+1}</td>
+      <td><input type="date" class="eD" value="${e.d}"></td>
+      <td><input type="number" class="eM mono" value="${e.m}" style="text-align:right" oninput="totalEch(${c.id})"></td>
+      <td><button class="btn b-rg" style="padding:4px 9px;font-size:12px" onclick="this.closest('tr').remove();totalEch(${c.id})">✕</button></td></tr>`).join('')+`</table>`;
+  totalEch(c.id);
+}
+function lignesEch(){ return [...document.querySelectorAll('#mEchLignes tr')].slice(1).map(tr=>({d:tr.querySelector('.eD').value, m:Number(tr.querySelector('.eM').value)||0})); }
+function totalEch(id){
+  const c=D.clients.find(x=>x.id===id); const t=lignesEch().reduce((s,e)=>s+e.m,0);
+  const ec=t-Number(c.prix||0);
+  document.getElementById('mEchTotal').innerHTML=`Total de l'échéancier : <b>${fcfa(t)}</b>`+
+    (ec===0?' <span style="color:var(--vert)">— égal au prix de vente ✓</span>':` <span style="color:var(--rouge)">— ${ec>0?'dépasse':'inférieur à'} le prix de vente de ${fcfa(Math.abs(ec))}</span>`);
+}
+function genererEch(id){
+  const c=D.clients.find(x=>x.id===id);
+  const tot=Number(gTotal.value)||0, nb=Math.max(1,Math.min(120,Number(gNb.value)||1)), per=Number(gPer.value), d0=gDate.value||auj();
+  if(tot<=0) return flash('msgM','Indiquez le montant à échelonner.',false);
+  const base=Math.floor(tot/nb/500)*500 || Math.floor(tot/nb);
+  const l=[]; for(let i=0;i<nb;i++){
+    const d = per>=1 ? plusMois(d0,i*per) : plusJours(d0,Math.round(i*per*28));
+    l.push({d, m: i<nb-1 ? base : tot-base*(nb-1)});
+  }
+  dessinerLignesEch(c,l);
+}
+function ajouterLigneEch(id){
+  const c=D.clients.find(x=>x.id===id); const l=lignesEch();
+  const der=l.length?l[l.length-1].d:auj(); l.push({d:plusMois(der,1),m:0}); dessinerLignesEch(c,l);
+}
+async function enregistrerEch(id){
+  const c=D.clients.find(x=>x.id===id); const l=lignesEch();
+  if(!l.length) return flash('msgM','Ajoutez au moins une échéance.',false);
+  if(l.some(e=>!e.d||e.m<=0)) return flash('msgM','Chaque ligne doit avoir une date et un montant.',false);
+  const t=l.reduce((s,e)=>s+e.m,0);
+  if(t!==Number(c.prix||0) && !confirm(`Le total des échéances (${fcfa(t)}) est différent du prix de vente (${fcfa(c.prix)}). Enregistrer quand même ?`)) return;
+  c.ech=l.sort((a,b)=>a.d.localeCompare(b.d)); await sauver();
+  fermerModal(); afficher(id); rafraichirVues();
+}
+async function supprimerEch(id){
+  if(!confirm("Supprimer l'échéancier de ce dossier ? (les versements ne sont pas touchés)")) return;
+  const c=D.clients.find(x=>x.id===id); delete c.ech; await sauver(); fermerModal(); afficher(id); rafraichirVues();
+}
+
+function echeances(){
+  const tous=[]; D.clients.forEach(c=>echeances_(c).forEach(e=>{ if(e.du>0) tous.push({c,e}); }));
+  const ret=tous.filter(x=>x.e.st==='retard'), sem=tous.filter(x=>x.e.st==='proche'||(x.e.st==='partielle'&&x.e.d<=plusJours(auj(),7)));
+  const sansPlan=D.clients.filter(c=>reste(c)>0&&!(c.ech&&c.ech.length)).length;
+  document.getElementById('echStats').innerHTML=`
+    <div class="stat" style="border-top-color:var(--rouge)"><div class="lb">EN RETARD</div><div class="vl" style="color:var(--rouge)">${fcfa(ret.reduce((s,x)=>s+x.e.du,0))}</div><div style="font-size:12px;color:#8A8377;margin-top:4px">${ret.length} échéance${ret.length>1?'s':''}</div></div>
+    <div class="stat" style="border-top-color:var(--bleu)"><div class="lb">À PAYER CETTE SEMAINE</div><div class="vl">${fcfa(sem.reduce((s,x)=>s+x.e.du,0))}</div><div style="font-size:12px;color:#8A8377;margin-top:4px">${sem.length} échéance${sem.length>1?'s':''}</div></div>
+    <div class="stat" style="border-top-color:var(--vert)"><div class="lb">ATTENDU SUR 30 JOURS</div><div class="vl">${fcfa(tous.filter(x=>x.e.d<=plusJours(auj(),30)).reduce((s,x)=>s+x.e.du,0))}</div></div>
+    <div class="stat" style="border-top-color:var(--orange)"><div class="lb">DOSSIERS SANS ÉCHÉANCIER</div><div class="vl">${sansPlan}</div><div style="font-size:12px;color:#8A8377;margin-top:4px">avec un reste à payer</div></div>`;
+  const f=document.getElementById('eFiltre').value, a=auj();
+  let l=tous;
+  if(f==='urgent') l=tous.filter(x=>x.e.d<=plusJours(a,7));
+  if(f==='retard') l=ret;
+  if(f==='mois') l=tous.filter(x=>x.e.d<=plusJours(a,30));
+  l.sort((x,y)=>x.e.d.localeCompare(y.e.d));
+  const t=document.getElementById('tblEch');
+  if(!l.length){ t.innerHTML=`<tr><td class="vide">${tous.length?'Aucune échéance pour ce filtre.':'Aucun échéancier défini. Ouvrez une fiche client puis « Échéancier ».'}</td></tr>`; return; }
+  t.innerHTML=`<tr><th>DATE</th><th>N°</th><th>CLIENT</th><th>ÉCHÉANCE</th><th class="r">À PAYER</th><th>ÉTAT</th><th></th></tr>`+
+  l.map(({c,e})=>{ const j=Math.round((new Date(e.d)-new Date(a))/864e5);
+    return `<tr>
+    <td style="white-space:nowrap">${jour(e.d)}<div style="font-size:11.5px;color:${j<0?'var(--rouge)':'#8A8377'}">${j<0?`${-j} j de retard`:j===0?"aujourd'hui":`dans ${j} j`}</div></td>
+    <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--orange);cursor:pointer" onclick="ouvrir(${c.id})">${num(c.id)}</td>
+    <td style="font-weight:600;cursor:pointer" onclick="ouvrir(${c.id})">${c.nom}<div style="font-size:12px;color:#8A8377;font-weight:400">${c.bien||''}</div></td>
+    <td style="color:#8A8377">n° ${e.n} / ${(c.ech||[]).length}</td>
+    <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--marine)">${fcfa(e.du)}${e.paye>0?`<div style="font-size:11px;color:#8A8377;font-weight:500">sur ${fcfa(e.m)}</div>`:''}</td>
+    <td><span class="ech-b ech-${e.st}">${ECH_TXT[e.st]}</span></td>
+    <td style="text-align:right;white-space:nowrap">
+      <button class="btn b-or" style="padding:6px 12px;font-size:12.5px" onclick="rappelEch(${c.id})">WhatsApp</button>
+      <button class="btn b-vd" style="padding:6px 12px;font-size:12.5px" onclick="allerVerser(${c.id})">Encaisser</button>
+    </td></tr>`}).join('');
+}
+function rappelEch(id){
+  const c=D.clients.find(x=>x.id===id); const tel=(c.tel||'').replace(/\D/g,'');
+  if(!tel){ alert("Ce client n'a pas de numéro enregistré. Ajoutez-le dans sa fiche."); return; }
+  const e=prochaine(c); if(!e) return;
+  const t = e.st==='retard'
+    ? `Bonjour ${c.nom},\nSauf erreur de notre part, votre échéance du ${jour(e.d)} (${fcfa(e.du)}) concernant le dossier n° ${num(c.id)} (${c.bien||'—'}) n'est pas encore réglée.\nMerci de régulariser dès que possible, à nos bureaux ou par Orange Money/Wave au ${ENTREPRISE.wa}.\nReste à payer sur le dossier : ${fcfa(Math.max(0,reste(c)))}.\nKanji Multi Services — Tél : ${ENTREPRISE.tel}`
+    : `Bonjour ${c.nom},\nKanji Multi Services vous rappelle votre prochaine échéance du ${jour(e.d)} : ${fcfa(e.du)} (dossier n° ${num(c.id)} — ${c.bien||'—'}).\nVous pouvez régler à nos bureaux ou par Orange Money/Wave au ${ENTREPRISE.wa}.\nMerci de votre confiance. L'Afrique bouge !`;
+  window.open(`https://wa.me/225${tel}?text=${encodeURIComponent(t)}`,'_blank');
+  c.derniereRelance=auj(); sauver();
+}
+document.getElementById('eFiltre').onchange=echeances;
+
 /* ---------- navigation ---------- */
 document.querySelectorAll('.bar nav button').forEach(b=>{
   b.onclick=()=>{
@@ -663,6 +826,7 @@ document.querySelectorAll('.bar nav button').forEach(b=>{
     document.getElementById(b.dataset.v).classList.add('on');
     if(b.dataset.v==='v-bord') bord();
     if(b.dataset.v==='v-relances') relances();
+    if(b.dataset.v==='v-echeances') echeances();
     if(b.dataset.v==='v-versement') listeClients();
     if(b.dataset.v==='v-recherche') document.getElementById('q').focus();
   };
@@ -738,8 +902,24 @@ function afficher(id){
           </td></tr>`).join('')}
       </table>`:'<div class="vide">Aucun versement enregistré pour ce dossier.</div>'}
     </div>
+    <div class="sect">
+      <h3>Échéancier</h3>
+      ${(()=>{ const l=echeances_(c); if(!l.length) return `<div class="vide">Aucun échéancier pour ce dossier. <button class="btn b-bl" style="margin-left:8px;padding:7px 13px;font-size:13px" onclick="ouvrirEcheancier(${c.id})">Définir l'échéancier</button></div>`;
+        const p=l.find(e=>e.du>0), ret=l.filter(e=>e.st==='retard').reduce((s,e)=>s+e.du,0), rg=l.filter(e=>e.du<=0).length;
+        return `<div class="ech-resume">
+          <div><div class="lb">PROCHAINE ÉCHÉANCE</div><div class="vl">${p?`${jour(p.d)} · ${fcfa(p.du)}`:'Tout est réglé ✓'}</div></div>
+          <div class="${ret>0?'rouge':''}"><div class="lb">EN RETARD</div><div class="vl">${fcfa(ret)}</div></div>
+          <div><div class="lb">ÉCHÉANCES RÉGLÉES</div><div class="vl">${rg} / ${l.length}</div></div>
+        </div>
+        <table><tr><th>N°</th><th>DATE</th><th class="r">MONTANT</th><th class="r">RÉGLÉ</th><th class="r">RESTE</th><th>ÉTAT</th></tr>
+        ${l.map(e=>`<tr><td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--orange)">${e.n}</td><td>${jour(e.d)}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace">${fcfa(e.m)}</td><td class="mt">${fcfa(e.paye)}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:${e.du>0?'var(--rouge)':'var(--vert)'}">${fcfa(e.du)}</td>
+          <td><span class="ech-b ech-${e.st}">${ECH_TXT[e.st]}</span></td></tr>`).join('')}</table>`; })()}
+    </div>
     <div class="actions">
       <button class="btn b-or" onclick="allerVerser(${c.id})">Encaisser un versement</button>
+      <button class="btn b-bl" onclick="ouvrirEcheancier(${c.id})">Échéancier</button>
       <button class="btn b-bl" onclick="modifierClient(${c.id})">Modifier le dossier</button>
       <button class="btn b-bl" onclick="envoyerDossier(${c.id})">Envoyer le dossier</button>
       <button class="btn b-vd" onclick="imprimerSituation(${c.id})">Imprimer la situation</button>
@@ -771,6 +951,7 @@ document.getElementById('btnClient').onclick=async()=>{
            type:cType.value,prix,dateContrat:cDate.value||auj()};
   D.clients.push(c); await sauver();
   flash('msgC',`Dossier n° ${num(c.id)} créé pour ${nom}.`,true);
+  if(document.getElementById('cEch').checked) setTimeout(()=>ouvrirEcheancier(c.id),300);
   ['cNom','cTel','cCni','cBien','cPrix'].forEach(i=>document.getElementById(i).value='');
   listeClients();
 };
@@ -878,6 +1059,11 @@ function imprimerSituation(id){
       <tr><td>Total versé</td><td class="gros">${fcfa(verse(id))}</td></tr>
       <tr><td><strong>Reste à payer</strong></td><td class="gros">${fcfa(Math.max(0,reste(c)))}</td></tr>
     </table>
+    ${(c.ech&&c.ech.length)?`<h1 style="font-size:18px;margin-top:26px;letter-spacing:2px">ÉCHÉANCIER</h1>
+    <table>
+      <tr><td style="width:auto;font-weight:600;color:#000">N°</td><td style="text-align:left;width:22%">Date</td><td style="text-align:left;width:22%">Montant</td><td style="text-align:left;width:22%">État</td><td>Reste</td></tr>
+      ${echeances_(c).map(e=>`<tr><td style="width:auto">${e.n}</td><td style="text-align:left">${jour(e.d)}</td><td style="text-align:left">${fcfa(e.m)}</td><td style="text-align:left">${ECH_TXT[e.st]}</td><td>${fcfa(e.du)}</td></tr>`).join('')}
+    </table>`:''}
     <div class="sig"><div>Le client</div><div>Pour ${ENTREPRISE.nom}</div></div>
     ${pied()}`);
 }
@@ -892,7 +1078,8 @@ function bord(){
     <div class="stat"><div class="lb">DOSSIERS OUVERTS</div><div class="vl">${D.clients.length}</div></div>
     <div class="stat"><div class="lb">TOTAL ENCAISSÉ</div><div class="vl">${fcfa(enc)}</div></div>
     <div class="stat"><div class="lb">RESTE À RECOUVRER</div><div class="vl">${fcfa(du)}</div></div>
-    <div class="stat"><div class="lb">DOSSIERS SOLDÉS</div><div class="vl">${sol} / ${D.clients.length}</div></div>`;
+    <div class="stat"><div class="lb">DOSSIERS SOLDÉS</div><div class="vl">${sol} / ${D.clients.length}</div></div>
+    <div class="stat" style="border-top-color:var(--rouge);cursor:pointer" onclick="document.querySelector('[data-v=&quot;v-echeances&quot;]').click()"><div class="lb">ÉCHÉANCES EN RETARD</div><div class="vl" style="color:var(--rouge)">${fcfa(D.clients.reduce((s,c)=>s+enRetard(c),0))}</div></div>`;
 
   const t=document.getElementById('tblTous');
   if(!D.clients.length){ t.innerHTML='<tr><td class="vide">Aucun dossier. Commencez par créer un client.</td></tr>'; return; }
@@ -1058,7 +1245,8 @@ function telecharger(blob,nom){
 /* ================= RELANCES ================= */
 const MODELES={
  solde:"Bonjour [NOM],\nKanji Multi Services vous informe que le solde restant sur votre dossier n° [DOSSIER] ([BIEN]) s'élève à [SOLDE].\nMerci de passer à nos bureaux ou procéder par un dépôt Orange Money/Wave au 07 18 97 10 29.\nTél : 27 34 77 37 11 / 05 76 51 59 79.",
- echeance:"Bonjour [NOM],\nNous vous rappelons que votre prochaine échéance concernant le dossier n° [DOSSIER] ([BIEN]) approche. Reste à payer : [SOLDE].\nMerci de prendre vos dispositions.\nKanji Multi Services — Caisse : 27 34 77 37 11",
+ echeance:"Bonjour [NOM],\nNous vous rappelons votre prochaine échéance du [ECHEANCE] : [MONTANT_ECH], concernant le dossier n° [DOSSIER] ([BIEN]).\nReste à payer sur le dossier : [SOLDE].\nMerci de prendre vos dispositions.\nKanji Multi Services — Caisse : 27 34 77 37 11",
+ retard:"Bonjour [NOM],\nSauf erreur de notre part, votre échéance du [ECHEANCE] ([MONTANT_ECH]) concernant le dossier n° [DOSSIER] ([BIEN]) n'est pas encore réglée.\nMerci de régulariser dès que possible, à nos bureaux ou par Orange Money/Wave au 07 18 97 10 29.\nKanji Multi Services — Caisse : 27 34 77 37 11",
  passage:"Bonjour [NOM],\nNous souhaitons vous rencontrer au sujet de votre dossier n° [DOSSIER] ([BIEN]).\nMerci de passer à la caisse : Immeuble Ehouman, 1er Étage, Porte 2 à Gauche, Abengourou.\nKanji Multi Services",
  merci:"Bonjour [NOM],\nKanji Multi Services vous remercie pour votre versement.\nTotal réglé à ce jour : [VERSE]. Reste à payer : [SOLDE].\nVotre reçu est disponible à nos bureaux.\nL'Afrique bouge !",
  libre:"Bonjour [NOM],\n"
@@ -1069,7 +1257,9 @@ function texteRelance(c){
     .replaceAll('[DOSSIER]',num(c.id))
     .replaceAll('[BIEN]',c.bien||'—')
     .replaceAll('[SOLDE]',fcfa(Math.max(0,reste(c))))
-    .replaceAll('[VERSE]',fcfa(verse(c.id)));
+    .replaceAll('[VERSE]',fcfa(verse(c.id)))
+    .replaceAll('[ECHEANCE]',(prochaine(c)?jour(prochaine(c).d):'—'))
+    .replaceAll('[MONTANT_ECH]',(prochaine(c)?fcfa(prochaine(c).du):fcfa(Math.max(0,reste(c)))));
 }
 function envoyerWA(id){
   const c=D.clients.find(z=>z.id===id);
@@ -1094,16 +1284,19 @@ function relances(){
   let l=D.clients.slice();
   if(f==='dette') l=l.filter(c=>reste(c)>0);
   if(f==='rien')  l=l.filter(c=>verse(c.id)===0);
+  if(f==='retard') l=l.filter(c=>enRetard(c)>0);
+  if(f==='semaine') l=l.filter(c=>{ const p=prochaine(c); return p && p.d<=plusJours(auj(),7); });
   l.sort((a,b)=>reste(b)-reste(a));
 
   const tb=document.getElementById('tblRelances');
   if(!l.length){ tb.innerHTML='<tr><td class="vide">Aucun client ne correspond à ce filtre.</td></tr>'; return; }
-  tb.innerHTML=`<tr><th>N°</th><th>CLIENT</th><th>TÉLÉPHONE</th><th class="r">RESTE À PAYER</th><th>DERNIÈRE RELANCE</th><th></th></tr>`+
+  tb.innerHTML=`<tr><th>N°</th><th>CLIENT</th><th>TÉLÉPHONE</th><th class="r">RESTE À PAYER</th><th>PROCHAINE ÉCHÉANCE</th><th>DERNIÈRE RELANCE</th><th></th></tr>`+
   l.map(c=>`<tr>
     <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--orange)">${num(c.id)}</td>
     <td style="font-weight:600">${c.nom}<div style="font-size:12px;color:#8A8377;font-weight:400">${c.bien||''}</div></td>
     <td style="font-family:'JetBrains Mono',monospace">${c.tel||'<span style="color:var(--rouge)">non renseigné</span>'}</td>
     <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:${reste(c)<=0?'var(--vert)':'var(--rouge)'}">${fcfa(Math.max(0,reste(c)))}</td>
+    <td style="font-size:13px">${(()=>{ const p=prochaine(c); return p?`${jour(p.d)} · ${fcfa(p.du)} <span class="ech-b ech-${p.st}">${ECH_TXT[p.st]}</span>`:'<span style="color:#8A8377">—</span>'; })()}</td>
     <td style="color:#8A8377;font-size:13px">${c.derniereRelance?jour(c.derniereRelance):'jamais'}</td>
     <td style="text-align:right;white-space:nowrap">
       <button class="btn b-or" style="padding:6px 12px;font-size:12.5px" onclick="envoyerWA(${c.id})">WhatsApp</button>
@@ -1496,6 +1689,8 @@ function normaliserD(x){
 function rafraichirVues(){
   try{ listeClients(); }catch(e){}
   try{ bord(); }catch(e){}
+  try{ echeances(); }catch(e){}
+  try{ if(document.getElementById('v-relances').classList.contains('on')) relances(); }catch(e){}
   try{ if(q.value.trim()) chercher(); }catch(e){}
 }
 
