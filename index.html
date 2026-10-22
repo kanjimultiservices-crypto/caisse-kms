@@ -155,7 +155,7 @@ tr:hover td{background:#FDFBF8}
 #zoneImpr{display:none}
 @media print{
   body{background:#fff}
-  .bar,.wrap{display:none !important}
+  .bar,.wrap,#ecran,#modal{display:none !important}
   #zoneImpr{display:block !important;padding:0}
   @page{size:A4;margin:14mm}
   .recu{min-height:265mm;display:flex;flex-direction:column}
@@ -175,6 +175,26 @@ tr:hover td{background:#FDFBF8}
 .recu .gros{font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700;color:#14224A}
 .recu .sig{display:flex;justify-content:space-between;margin-top:52px;font-size:12px;color:#555}
 .recu .sig div{width:42%;border-top:1px solid #999;padding-top:6px;text-align:center}
+/* ---------- attestation de vente de lot (modèle KMS) ---------- */
+.att{position:relative;width:100%;max-width:720px;margin:0 auto;font-family:Inter,Arial,sans-serif;color:#000;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.att .at-tete{display:flex;align-items:center;gap:22px}
+.att .at-tete img{width:150px;height:150px;object-fit:contain}
+.att .at-nm{font-size:30px;color:#F7941D;letter-spacing:1px;font-weight:600}
+.att .at-sl{font-size:15px;color:#1A5FB4;font-weight:700;margin-top:18px;letter-spacing:.5px}
+.att .at-titre{text-align:center;margin:44px 0 30px}
+.att .at-titre span{font-size:19px;font-weight:700;text-decoration:underline;text-underline-offset:4px;letter-spacing:.5px}
+.att .at-corps{font-size:15.5px;line-height:1.65;text-align:justify;position:relative;z-index:1}
+.att .at-corps p{margin:0 0 12px}
+.att .at-nb{font-size:13.5px}
+.att .at-nb b{text-decoration:underline}
+.att .at-nb i{font-weight:700}
+.att .at-fait{margin-top:30px;font-size:15.5px}
+.att .at-sig{display:flex;justify-content:space-between;margin:70px 10px 0;font-weight:700;font-size:16px;text-decoration:underline;text-underline-offset:4px}
+.att .at-espace{height:110px}
+.att .at-filigrane{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%) rotate(-58deg);font-size:150px;font-weight:300;color:rgba(0,0,0,.09);letter-spacing:14px;white-space:nowrap;z-index:0;font-family:Georgia,serif;pointer-events:none}
+.att .at-pied{border-top:6px solid #5B9BD5;padding-top:14px;margin-top:auto;font-size:12px;font-weight:700;color:#F7941D;line-height:1.55}
+@media print{ .att{min-height:265mm;display:flex;flex-direction:column} }
+
 .recu .pied{text-align:center;font-size:10.5px;color:#777;margin-top:auto;padding-top:10px;border-top:1px solid #ddd;line-height:1.7}
 
 /* ---------- téléphone et petits écrans ---------- */
@@ -922,6 +942,7 @@ function afficher(id){
       <button class="btn b-bl" onclick="ouvrirEcheancier(${c.id})">Échéancier</button>
       <button class="btn b-bl" onclick="modifierClient(${c.id})">Modifier le dossier</button>
       <button class="btn b-bl" onclick="envoyerDossier(${c.id})">Envoyer le dossier</button>
+      <button class="btn b-bl" onclick="ouvrirAttestation(${c.id})">Attestation de vente</button>
       <button class="btn b-vd" onclick="imprimerSituation(${c.id})">Imprimer la situation</button>
       <button class="btn b-vd" onclick="relancer(${c.id})">Relance WhatsApp</button>
       <button class="btn b-rg" onclick="supprimerC(${c.id})">Supprimer le dossier</button>
@@ -1086,6 +1107,123 @@ function imprimerSituation(id){
     </table>`:''}
     <div class="sig"><div>Le client</div><div>Pour ${ENTREPRISE.nom}</div></div>
     ${pied()}`);
+}
+
+/* ---------- attestation de vente de lot ---------- */
+const ATT_PIED = "S.A.R.L. AU CAPITAL DE 5.000.000 FRANCS CFA. IDU : ci-2024-0068041q. RCCM : ci-abj-03-2024-b13-00105.  ABENGOUROU, immeuble ehouman (ancienne gare uti), 1er étage porte 02. Contacts : 27.34.77.37.11 / 07.18.97.10.29 / 05.76.51.59.79.";
+const ATT_SIGNATAIRE = "Monsieur TAPE TAPE ETIENNE";
+const escH = t => String(t==null?'':t).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const MOIS_FR=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const dateLongue = d => { const p=String(d||'').split('-'); if(p.length!==3) return d||''; const j=Number(p[2]); return `${j===1?'1er':j} ${MOIS_FR[Number(p[1])-1]} ${p[0]}`; };
+/* nombre en toutes lettres (orthographe traditionnelle), en majuscules */
+function enLettres(n){
+  n=Math.floor(Math.abs(Number(n)||0));
+  if(n===0) return 'ZÉRO';
+  const U=['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const T=['','dix','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+  const moins100 = x => {
+    if(x<20) return U[x];
+    const d=Math.floor(x/10), u=x%10;
+    if(d===7||d===9) return T[d]+(d===7&&u===1?' et ':'-')+U[10+u];
+    if(d===8) return u?T[8]+'-'+U[u]:'quatre-vingts';
+    return T[d]+(u===1?' et un':u?'-'+U[u]:'');
+  };
+  /* fin=true : le groupe termine le nombre (accord de « cents » / « quatre-vingts ») */
+  const moins1000 = (x, fin) => {
+    const c=Math.floor(x/100), r=x%100; let t='';
+    if(c) t = (c>1?U[c]+' cent':'cent') + (c>1&&r===0&&fin?'s':'');
+    if(r) t += (t?' ':'') + moins100(r);
+    if(!fin) t=t.replace(/quatre-vingts$/,'quatre-vingt');
+    return t;
+  };
+  const parts=[]; let x=n;
+  const mds=Math.floor(x/1e9); x%=1e9; const mns=Math.floor(x/1e6); x%=1e6; const mil=Math.floor(x/1000); const r=x%1000;
+  if(mds) parts.push(moins1000(mds,true)+' milliard'+(mds>1?'s':''));
+  if(mns) parts.push(moins1000(mns,true)+' million'+(mns>1?'s':''));
+  if(mil) parts.push(mil===1?'mille':moins1000(mil,false)+' mille');
+  if(r) parts.push(moins1000(r,true));
+  return parts.join(' ').toUpperCase();
+}
+const chiffresPoints = n => String(Math.floor(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+function attDefauts(c){
+  const a=Object.assign({}, c.att||{});
+  const b=c.bien||'';
+  if(a.lot==null){ const m=b.match(/\blot\s*(?:n[°o]?\s*)?(\d+[a-z]?)/i); a.lot=m?m[1]:''; }
+  if(a.ilot==null){ const m=b.match(/[iî]lot\s*(?:n[°o]?\s*)?(\d+[a-z]?)/i); a.ilot=m?m[1]:''; }
+  if(a.lotis==null) a.lotis=/como[ée]kro/i.test(b)?'du village de Comoékro':'';
+  if(a.commune==null) a.commune='Abengourou';
+  if(a.civ==null) a.civ='Monsieur';
+  if(a.nom==null) a.nom=(c.nom||'').toUpperCase();
+  if(a.sign==null) a.sign=ATT_SIGNATAIRE;
+  if(a.nb==null) a.nb=true;
+  a.prix=c.prix||0; a.date=auj();
+  return a;
+}
+function ouvrirAttestation(id){
+  const c=D.clients.find(x=>x.id===id); if(!c) return;
+  const a=attDefauts(c), r=Math.max(0,reste(c));
+  document.getElementById('mTitre').textContent=`Attestation de vente — dossier n° ${num(c.id)}`;
+  document.getElementById('mCorps').innerHTML=`
+    <div class="msg" id="msgM"></div>
+    ${r>0?`<div class="bloque" style="border-left-color:var(--rouge);color:#9B1C1C">Attention : ce dossier n'est pas soldé. Il reste <b>${fcfa(r)}</b> à payer. L'attestation indiquera le montant versé et le reste dû.</div>`:
+      `<div class="bloque" style="border-left-color:var(--vert);background:#EEF8F2;color:#0E5A37">Dossier soldé ✓ — l'attestation indiquera que la totalité du prix a été versée.</div>`}
+    <div class="grille">
+      <div><label>CIVILITÉ DE L'ACQUÉREUR</label><select id="aCiv">${['Monsieur','Madame','Mademoiselle'].map(x=>`<option${x===a.civ?' selected':''}>${x}</option>`).join('')}</select></div>
+      <div><label>NOM COMPLET DE L'ACQUÉREUR</label><input id="aNom" value="${escH(a.nom)}"></div>
+      <div><label>LOT N°</label><input id="aLot" class="mono" value="${escH(a.lot)}"></div>
+      <div><label>ÎLOT N°</label><input id="aIlot" class="mono" value="${escH(a.ilot)}"></div>
+      <div><label>LOTISSEMENT</label><input id="aLotis" value="${escH(a.lotis)}" placeholder="du village de Comoékro"></div>
+      <div><label>COMMUNE</label><input id="aCom" value="${escH(a.commune)}"></div>
+      <div><label>PRIX DE VENTE (FCFA)</label><input type="number" id="aPrix" class="mono" value="${a.prix}"></div>
+      <div><label>DATE DE L'ATTESTATION</label><input type="date" id="aDate" value="${a.date}"></div>
+      <div><label>SIGNATAIRE (VENDEUR)</label><input id="aSign" value="${escH(a.sign)}"></div>
+      <div style="display:flex;align-items:flex-end"><label style="display:flex;gap:8px;align-items:center;font-size:13px;letter-spacing:0"><input type="checkbox" id="aNb" ${a.nb?'checked':''} style="width:auto"> NB : frais de chefferie à la charge de l'acquéreur</label></div>
+    </div>
+    <div style="margin-top:14px;font-size:11px;letter-spacing:2px;color:#8A8377;font-weight:700">APERÇU DU TEXTE</div>
+    <div id="aApercu" style="margin-top:6px;padding:12px 14px;background:#FAF8F4;border-radius:6px;font-size:13.5px;line-height:1.55;color:#333"></div>`;
+  document.getElementById('mPied').innerHTML=`
+    <button class="btn b-or" onclick="imprimerAttestation(${c.id})">Imprimer / PDF</button>
+    <button class="btn b-vd" onclick="fermerModal()">Fermer</button>`;
+  document.getElementById('modal').classList.add('on');
+  const maj=()=>{ document.getElementById('aApercu').innerHTML=texteAttestation(c, lireAtt()).corps; };
+  ['aCiv','aNom','aLot','aIlot','aLotis','aCom','aPrix','aDate','aSign','aNb'].forEach(k=>{ const e=document.getElementById(k); e.oninput=maj; e.onchange=maj; });
+  maj();
+}
+function lireAtt(){
+  const v=k=>document.getElementById(k).value.trim();
+  return {civ:v('aCiv'), nom:v('aNom').toUpperCase(), lot:v('aLot'), ilot:v('aIlot'), lotis:v('aLotis'), commune:v('aCom')||'Abengourou',
+    prix:Number(v('aPrix'))||0, date:v('aDate')||auj(), sign:v('aSign')||ATT_SIGNATAIRE, nb:document.getElementById('aNb').checked};
+}
+function texteAttestation(c,a){
+  const tv=verse(c.id), r=Math.max(0,a.prix-tv);
+  const corps = `<p>Je soussigné ${escH(a.sign)} représentant légal de KANJI MULTI-SERVICES S.A.R.L. atteste avoir vendu le lot numéro ${escH(a.lot||'……')}, Ilot ${escH(a.ilot||'……')} du lotissement${a.lotis?' '+escH(a.lotis):''} dans la commune d’${escH(a.commune)}, à ${escH(a.civ)} ${escH(a.nom)}, au prix de ${enLettres(a.prix)} (${chiffresPoints(a.prix)}) Francs CFA.</p>`+
+    (r<=0 ? `<p>La totalité du prix d’achat du lot a été versée ce jour.</p>`
+          : `<p>À ce jour, la somme de ${enLettres(tv)} (${chiffresPoints(tv)}) Francs CFA a été versée. Le reste, soit ${enLettres(r)} (${chiffresPoints(r)}) Francs CFA, demeure dû.</p>`)+
+    `<p>En foi de quoi je lui délivre la présente décharge pour servir et valoir ce que de droit.</p>`+
+    (a.nb ? `<p class="at-nb"><b>NB</b> : <i>les frais de signature de la chefferie sont à la charge de l’acquéreur.</i></p>` : '');
+  return {corps, r};
+}
+async function imprimerAttestation(id){
+  const c=D.clients.find(x=>x.id===id); if(!c) return;
+  const a=lireAtt();
+  if(!a.nom||!a.lot||!a.ilot) return flash('msgM',"Indiquez le nom de l'acquéreur, le n° du lot et le n° de l'îlot.",false);
+  if(a.prix<=0) return flash('msgM','Indiquez le prix de vente.',false);
+  const {corps}=texteAttestation(c,a);
+  /* on garde ces informations dans le dossier pour la prochaine fois */
+  const garde={civ:a.civ, nom:a.nom, lot:a.lot, ilot:a.ilot, lotis:a.lotis, commune:a.commune, sign:a.sign, nb:a.nb};
+  if(JSON.stringify(c.att||{})!==JSON.stringify(garde)){ c.att=garde; try{ await sauver(); }catch(e){} }
+  fermerModal();
+  document.getElementById('zoneImpr').innerHTML=`<div class="att">
+    <div class="at-filigrane">KANJI MS</div>
+    <div class="at-tete"><img src="${LOGO}" alt=""><div><div class="at-nm">KANJI MULTI-SERVICES</div><div class="at-sl">LOTISSEMENT – BTP – IMMOBILIER</div></div></div>
+    <div class="at-titre"><span>ATTESTATION DE VENTE DE LOT</span></div>
+    <div class="at-corps">${corps}</div>
+    <div class="at-fait">Fait à ${escH(a.commune)} le ${dateLongue(a.date)}</div>
+    <div class="at-sig"><span>L’ACQUEREUR</span><span>LE VENDEUR</span></div>
+    <div class="at-espace"></div>
+    <div class="at-pied">${ATT_PIED}</div>
+  </div>`;
+  setTimeout(()=>window.print(),150);
 }
 
 /* ---------- tableau de bord ---------- */
