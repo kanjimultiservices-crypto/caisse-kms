@@ -235,7 +235,9 @@ function stats(){
   c.forEach(function(x){by[x.statut]=(by[x.statut]||0)+1;var k=x.source||"Non renseignée";src[k]=(src[k]||0)+1});
   var mois=t.slice(0,7);
   return {total:c.length,by:by,src:src,due:c.filter(relanceDue),retard:c.filter(function(x){return relanceDue(x)&&x.relance<t}),
-    nouveaux:c.filter(function(x){return (x.dateAjout||"").slice(0,7)===mois}).length,
+    // chaque compteur est indépendant : un client gagné ou perdu ne compte plus comme prospect / nouveau
+    nouveaux:c.filter(function(x){return (x.dateAjout||"").slice(0,7)===mois&&x.statut!=="Client (gagné)"&&x.statut!=="Perdu"}).length,
+    enCours:c.filter(function(x){return x.statut!=="Client (gagné)"&&x.statut!=="Perdu"}).length,
     dispo:DB.biens.filter(function(b){return (b.statut||"Disponible")==="Disponible"}).length};
 }
 function vBord(){
@@ -245,11 +247,12 @@ function vBord(){
   if(!S().agent)h+='<div class="info">👋 Indiquez votre nom dans <b>⚙️ Paramètres</b> : il apparaîtra sur les fiches imprimées et dans les messages envoyés.</div>';
   h+='<div class="row between" style="margin-bottom:12px"><h2 class="h2t">Tableau de bord</h2><div class="row" style="gap:6px"><button class="btn o sm" onclick="printRapport()">🖨️ Imprimer le rapport</button><button class="btn nv sm" onclick="partager(\'rapport\')">📤 Envoyer au boss / équipe</button></div></div>';
   h+='<div class="stats">'
-    +'<div class="stat"><div class="lb">Clients au total</div><div class="vl">'+st.total+'</div></div>'
+    +'<div class="stat"><div class="lb">Prospects en cours</div><div class="vl">'+st.enCours+'</div></div>'
     +'<div class="stat"><div class="lb">Clients gagnés</div><div class="vl">'+(st.by["Client (gagné)"]||0)+'</div></div>'
     +'<div class="stat"><div class="lb">Relances à faire</div><div class="vl">'+st.due.length+'</div></div>'
-    +'<div class="stat"><div class="lb">Nouveaux ce mois</div><div class="vl">'+st.nouveaux+'</div></div>'
+    +'<div class="stat"><div class="lb">Nouveaux prospects ce mois</div><div class="vl">'+st.nouveaux+'</div></div>'
     +'<div class="stat"><div class="lb">Biens disponibles</div><div class="vl">'+st.dispo+'</div></div></div>';
+  h+='<div class="muted" style="margin:-6px 0 14px;font-size:13px">Total des fiches enregistrées : <b>'+st.total+'</b> ('+st.enCours+' prospects en cours · '+(st.by["Client (gagné)"]||0)+' gagnés · '+(st.by["Perdu"]||0)+' perdus)</div>';
   h+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px"><div class="carte" style="margin:0"><h2>Répartition par statut</h2><div class="st">Où en sont vos prospects</div>';
   STATUTS.forEach(function(s){var n=st.by[s]||0,pc=c.length?Math.round(n/c.length*100):0,col=(STC[s]||["#ccc","#999"])[1];
     h+='<div style="margin-bottom:9px"><div class="row between" style="font-size:13px"><span>'+s+'</span><span class="mono" style="font-weight:700">'+n+'</span></div>'
@@ -553,7 +556,7 @@ function texteClient(c){
 }
 function texteRapport(){
   var st=stats(),l=["📊 *Rapport prospection — "+S().agence+"*","Le "+nowFr()+(S().agent?" · par "+S().agent:""),""];
-  l.push("• Clients au total : "+st.total);l.push("• Nouveaux ce mois : "+st.nouveaux);l.push("• Clients gagnés : "+(st.by["Client (gagné)"]||0));
+  l.push("• Fiches au total : "+st.total);l.push("• Prospects en cours : "+st.enCours);l.push("• Nouveaux prospects ce mois : "+st.nouveaux);l.push("• Clients gagnés : "+(st.by["Client (gagné)"]||0));
   l.push("• En négociation : "+(st.by["En négociation"]||0));l.push("• Relances à faire : "+st.due.length+(st.retard.length?" (dont "+st.retard.length+" en retard)":""));l.push("• Biens disponibles : "+st.dispo);
   var nego=DB.clients.filter(function(c){return c.statut==="En négociation"}).slice(0,8);
   if(nego.length){l.push("");l.push("🤝 En négociation :");nego.forEach(function(c){l.push("- "+c.nom+(c.zone?" ("+c.zone+")":"")+(c.budget?" · "+c.budget:""))})}
@@ -671,7 +674,7 @@ function printRelances(){var d=DB.clients.filter(relanceDue).sort(function(a,b){
 function printRapport(){
   var st=stats();
   var h='<div class="pg">'+entete()+'<h1>Rapport de prospection</h1><div class="sub">Situation au '+nowFr()+'</div>'
-    +'<div class="kpis"><div><small>Clients</small><b>'+st.total+'</b></div><div><small>Nouveaux ce mois</small><b>'+st.nouveaux+'</b></div><div><small>Gagnés</small><b>'+(st.by["Client (gagné)"]||0)+'</b></div><div><small>Relances</small><b>'+st.due.length+'</b></div><div><small>Biens dispo</small><b>'+st.dispo+'</b></div></div>'
+    +'<div class="kpis"><div><small>Prospects en cours</small><b>'+st.enCours+'</b></div><div><small>Nouveaux prospects ce mois</small><b>'+st.nouveaux+'</b></div><div><small>Gagnés</small><b>'+(st.by["Client (gagné)"]||0)+'</b></div><div><small>Relances</small><b>'+st.due.length+'</b></div><div><small>Biens dispo</small><b>'+st.dispo+'</b></div></div>'
     +'<h4>Par statut</h4><table class="ls"><thead><tr><th>Statut</th><th style="width:80px">Nombre</th><th style="width:80px">%</th></tr></thead><tbody>'+STATUTS.map(function(s){var n=st.by[s]||0;return '<tr><td>'+s+'</td><td>'+n+'</td><td>'+(st.total?Math.round(n/st.total*100):0)+' %</td></tr>'}).join("")+'</tbody></table>'
     +'<h4>Par source</h4><table class="ls"><thead><tr><th>Source</th><th style="width:80px">Nombre</th></tr></thead><tbody>'+Object.keys(st.src).sort(function(a,b){return st.src[b]-st.src[a]}).map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+st.src[k]+'</td></tr>'}).join("")+'</tbody></table>';
   var nego=DB.clients.filter(function(c){return c.statut==="En négociation"});
